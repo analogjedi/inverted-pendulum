@@ -1,0 +1,1413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inverted Pendulum Control Lab</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&family=Outfit:wght@300;400;500;600;700&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #12121a;
+    --bg3: #1a1a26;
+    --surface: #1e1e2e;
+    --border: #2a2a3e;
+    --text: #e0e0f0;
+    --text-dim: #8888aa;
+    --accent: #ff4444;
+    --accent2: #ff6b35;
+    --green: #44ff88;
+    --blue: #4488ff;
+    --yellow: #ffcc44;
+    --purple: #aa66ff;
+    --cyan: #44ddff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  .header {
+    padding: 20px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg2);
+  }
+
+  .header h1 {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: -0.5px;
+    color: var(--text);
+  }
+
+  .header h1 span { color: var(--accent); }
+
+  .header-status {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    display: inline-block;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .main-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr 300px;
+    height: calc(100vh - 61px);
+  }
+
+  /* Left Panel */
+  .panel-left {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .panel-section {
+    margin-bottom: 20px;
+  }
+
+  .panel-section-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .controller-btn {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-dim);
+    font-family: 'Outfit', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: left;
+  }
+
+  .controller-btn:hover {
+    border-color: var(--accent);
+    color: var(--text);
+    background: var(--surface);
+  }
+
+  .controller-btn.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(255,68,68,0.08);
+    box-shadow: 0 0 20px rgba(255,68,68,0.05);
+  }
+
+  .controller-btn .ctrl-label {
+    font-weight: 600;
+    display: block;
+  }
+
+  .controller-btn .ctrl-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .param-group { margin-bottom: 12px; }
+
+  .param-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  .param-value {
+    color: var(--cyan);
+    font-weight: 500;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--bg3);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    border: 2px solid var(--bg);
+  }
+
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Outfit', sans-serif;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-right: 6px;
+    margin-bottom: 6px;
+  }
+
+  .action-btn:hover {
+    border-color: var(--accent);
+    background: var(--surface);
+  }
+
+  .action-btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+
+  .action-btn.primary:hover {
+    background: #ff5555;
+  }
+
+  /* Center - Canvas */
+  .canvas-container {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+  }
+
+  canvas#sim {
+    flex: 1;
+    width: 100%;
+    cursor: grab;
+  }
+
+  canvas#sim:active { cursor: grabbing; }
+
+  .canvas-overlay {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    pointer-events: none;
+  }
+
+  .overlay-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    background: rgba(10,10,15,0.85);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    backdrop-filter: blur(8px);
+    margin-right: 8px;
+  }
+
+  .overlay-badge span { color: var(--accent); font-weight: 500; }
+
+  .phase-plots {
+    height: 180px;
+    border-top: 1px solid var(--border);
+    display: flex;
+  }
+
+  .phase-plots canvas {
+    flex: 1;
+    border-right: 1px solid var(--border);
+  }
+
+  .phase-plots canvas:last-child { border-right: none; }
+
+  /* Right Panel */
+  .panel-right {
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 16px;
+  }
+
+  .state-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .state-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+  }
+
+  .state-card .label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .state-card .value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+
+  .state-card .unit {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--text-dim);
+  }
+
+  .energy-bar-container {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    margin-bottom: 12px;
+  }
+
+  .energy-bar-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .energy-bar {
+    height: 6px;
+    background: var(--bg);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .energy-bar-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.1s;
+  }
+
+  .eq-display {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 12px;
+  }
+
+  .eq-display .eq-title {
+    color: var(--accent);
+    font-weight: 500;
+    margin-bottom: 6px;
+    font-size: 12px;
+  }
+
+  .eq-display code {
+    color: var(--cyan);
+  }
+
+  .help-text {
+    font-size: 11px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    padding: 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+
+  .help-text kbd {
+    display: inline-block;
+    padding: 1px 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--text);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>//</span> Inverted Pendulum <span>Control Lab</span></h1>
+  <div class="header-status">
+    <span><span class="status-dot"></span> Sim Running</span>
+    <span id="fps-display">60 fps</span>
+    <span id="time-display">t = 0.00s</span>
+  </div>
+</div>
+
+<div class="main-layout">
+  <!-- Left Panel -->
+  <div class="panel-left">
+    <div class="panel-section">
+      <div class="panel-section-title">Controller</div>
+      <button class="controller-btn" data-ctrl="pd">
+        <span class="ctrl-label">PD Controller</span>
+        <span class="ctrl-desc">u = Kp·θ + Kd·θ̇ − Kx·x</span>
+      </button>
+      <button class="controller-btn" data-ctrl="lqr">
+        <span class="ctrl-label">LQR Controller</span>
+        <span class="ctrl-desc">u = −KX (optimal)</span>
+      </button>
+      <button class="controller-btn active" data-ctrl="swingup">
+        <span class="ctrl-label">Swing-Up + LQR</span>
+        <span class="ctrl-desc">Energy pump → LQR catch</span>
+      </button>
+      <button class="controller-btn" data-ctrl="mpc">
+        <span class="ctrl-label">MPC Controller</span>
+        <span class="ctrl-desc">Predictive horizon optimization</span>
+      </button>
+      <button class="controller-btn" data-ctrl="nn">
+        <span class="ctrl-label">Neural Net (RL)</span>
+        <span class="ctrl-desc">PPO actor-critic — learns from scratch</span>
+      </button>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">System Parameters</div>
+      <div class="param-group">
+        <div class="param-label">Cart Mass (M) <span class="param-value" id="val-M">1.0 kg</span></div>
+        <input type="range" id="param-M" min="0.2" max="5" step="0.1" value="1.0">
+      </div>
+      <div class="param-group">
+        <div class="param-label">Pend Mass (m) <span class="param-value" id="val-m">0.3 kg</span></div>
+        <input type="range" id="param-m" min="0.05" max="2" step="0.05" value="0.3">
+      </div>
+      <div class="param-group">
+        <div class="param-label">Pend Length (L) <span class="param-value" id="val-L">0.5 m</span></div>
+        <input type="range" id="param-L" min="0.1" max="2" step="0.05" value="0.5">
+      </div>
+      <div class="param-group">
+        <div class="param-label">Cart Friction (d) <span class="param-value" id="val-d">0.1</span></div>
+        <input type="range" id="param-d" min="0" max="2" step="0.05" value="0.1">
+      </div>
+    </div>
+
+    <div class="panel-section" id="ctrl-params-section">
+      <div class="panel-section-title">Controller Gains</div>
+      <div id="ctrl-params"></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Actions</div>
+      <button class="action-btn primary" id="btn-reset">↺ Reset</button>
+      <button class="action-btn" id="btn-perturb">⚡ Perturb</button>
+      <button class="action-btn" id="btn-pause">⏸ Pause</button>
+      <button class="action-btn" id="btn-trail">◌ Trail</button>
+    </div>
+
+    <div class="panel-section">
+      <div class="help-text">
+        <strong>Controls:</strong><br>
+        <kbd>←</kbd><kbd>→</kbd> Apply force to cart<br>
+        <kbd>Space</kbd> Pause/Resume<br>
+        <kbd>R</kbd> Reset system<br>
+        <kbd>P</kbd> Random perturbation<br>
+        Click & drag cart to reposition
+      </div>
+    </div>
+  </div>
+
+  <!-- Center Canvas -->
+  <div class="canvas-container">
+    <canvas id="sim"></canvas>
+    <div class="canvas-overlay">
+      <span class="overlay-badge">Controller: <span id="ctrl-name">Swing-Up + LQR</span></span>
+      <span class="overlay-badge">Force: <span id="force-display">0.0</span> N</span>
+    </div>
+    <div class="phase-plots">
+      <canvas id="plot-theta" title="θ vs time"></canvas>
+      <canvas id="plot-x" title="x vs time"></canvas>
+      <canvas id="plot-force" title="Force vs time"></canvas>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="panel-right">
+    <div class="panel-section">
+      <div class="panel-section-title">State Vector X</div>
+      <div class="state-grid">
+        <div class="state-card">
+          <div class="label">Position x</div>
+          <div class="value" id="state-x" style="color:var(--blue)">0.00 <span class="unit">m</span></div>
+        </div>
+        <div class="state-card">
+          <div class="label">Velocity ẋ</div>
+          <div class="value" id="state-xdot" style="color:var(--cyan)">0.00 <span class="unit">m/s</span></div>
+        </div>
+        <div class="state-card">
+          <div class="label">Angle θ</div>
+          <div class="value" id="state-theta" style="color:var(--accent)">0.00 <span class="unit">°</span></div>
+        </div>
+        <div class="state-card">
+          <div class="label">Ang Vel θ̇</div>
+          <div class="value" id="state-thetadot" style="color:var(--accent2)">0.00 <span class="unit">°/s</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Energy</div>
+      <div class="energy-bar-container">
+        <div class="energy-bar-label">Kinetic <span id="ke-val" style="color:var(--blue)">0.00 J</span></div>
+        <div class="energy-bar"><div class="energy-bar-fill" id="ke-bar" style="background:var(--blue);width:0%"></div></div>
+      </div>
+      <div class="energy-bar-container">
+        <div class="energy-bar-label">Potential <span id="pe-val" style="color:var(--green)">0.00 J</span></div>
+        <div class="energy-bar"><div class="energy-bar-fill" id="pe-bar" style="background:var(--green);width:0%"></div></div>
+      </div>
+      <div class="energy-bar-container">
+        <div class="energy-bar-label">Total <span id="te-val" style="color:var(--yellow)">0.00 J</span></div>
+        <div class="energy-bar"><div class="energy-bar-fill" id="te-bar" style="background:var(--yellow);width:0%"></div></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Equations (Active)</div>
+      <div class="eq-display" id="eq-display">
+        <div class="eq-title">No Control</div>
+        Free dynamics under gravity.<br>
+        <code>(M+m)ẍ + mLθ̈cosθ − mLθ̇²sinθ = −dx</code><br>
+        <code>mL²θ̈ + mLẍcosθ − mgLsinθ = 0</code>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-section-title">Performance</div>
+      <div class="state-grid">
+        <div class="state-card">
+          <div class="label">Settling</div>
+          <div class="value" id="perf-settling" style="color:var(--purple);font-size:16px">— <span class="unit">s</span></div>
+        </div>
+        <div class="state-card">
+          <div class="label">Peak Force</div>
+          <div class="value" id="perf-force" style="color:var(--accent2);font-size:16px">0.0 <span class="unit">N</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="physics.js"></script>
+<script src="lqr.js"></script>
+<script src="pd.js"></script>
+<script src="swingup.js"></script>
+<script src="mpc.js"></script>
+<script src="ppo.js"></script>
+<script>
+// ============================================================
+//  APPLICATION — State, Loop, Rendering, UI
+// ============================================================
+
+// System state
+let state = { x: 0, xdot: 0, theta: Math.PI + 0.05, thetadot: 0 }; // start hanging down
+let simTime = 0;
+let paused = false;
+let showTrail = true;
+let userForce = 0;
+let controlForce = 0;
+let peakForce = 0;
+let settled = false;
+let settleTime = null;
+let dragging = false;
+let dragStartX = 0;
+
+// Controller
+let activeCtrl = 'swingup';
+
+// History for plots
+const historyLen = 600;
+let history = {
+  theta: new Float32Array(historyLen),
+  x: new Float32Array(historyLen),
+  force: new Float32Array(historyLen),
+  idx: 0,
+  count: 0
+};
+
+// Trail for pendulum tip
+let trail = [];
+const maxTrail = 200;
+
+function computeControl(s) {
+  let u = 0;
+  switch (activeCtrl) {
+    case 'none': u = 0; break;
+    case 'pd': u = controllerPD(s); break;
+    case 'lqr': u = controllerLQR(s); break;
+    case 'swingup': u = controllerSwingUp(s); break;
+    case 'mpc': u = controllerMPC(s); break;
+    case 'nn': u = controllerNN(s); break;
+  }
+  // Clamp force
+  return Math.max(-80, Math.min(80, u));
+}
+
+// ============================================================
+//  RENDERING
+// ============================================================
+const simCanvas = document.getElementById('sim');
+const simCtx = simCanvas.getContext('2d');
+const plotTheta = document.getElementById('plot-theta');
+const plotX = document.getElementById('plot-x');
+const plotForce = document.getElementById('plot-force');
+
+function resizeCanvases() {
+  const container = simCanvas.parentElement;
+  const rect = container.getBoundingClientRect();
+  const plotHeight = 180;
+
+  simCanvas.width = rect.width * devicePixelRatio;
+  simCanvas.height = (rect.height - plotHeight) * devicePixelRatio;
+  simCanvas.style.width = rect.width + 'px';
+  simCanvas.style.height = (rect.height - plotHeight) + 'px';
+
+  [plotTheta, plotX, plotForce].forEach(c => {
+    const pr = c.parentElement.getBoundingClientRect();
+    c.width = (pr.width / 3) * devicePixelRatio;
+    c.height = plotHeight * devicePixelRatio;
+    c.style.width = (pr.width / 3) + 'px';
+    c.style.height = plotHeight + 'px';
+  });
+}
+
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+
+function drawSim() {
+  const ctx = simCtx;
+  const W = simCanvas.width;
+  const H = simCanvas.height;
+  const dpr = devicePixelRatio;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Scale: pixels per meter
+  const scale = Math.min(W, H) * 0.25;
+  const cx = W / 2 - state.x * scale * 0.3; // camera follows cart slightly
+  const groundY = H * 0.6;
+
+  // Grid
+  ctx.strokeStyle = 'rgba(42,42,62,0.5)';
+  ctx.lineWidth = 1 * dpr;
+  const gridSpacing = scale * 0.5;
+  for (let gx = (cx % gridSpacing); gx < W; gx += gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+  }
+  for (let gy = (groundY % gridSpacing); gy < H; gy += gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+  for (let gy = groundY; gy > 0; gy -= gridSpacing) {
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+  }
+
+  // Ground
+  ctx.fillStyle = 'rgba(42,42,62,0.3)';
+  ctx.fillRect(0, groundY, W, H - groundY);
+  ctx.strokeStyle = '#3a3a5e';
+  ctx.lineWidth = 2 * dpr;
+  ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke();
+
+  // Track
+  const trackWidth = 6 * scale;
+  const trackX = cx - trackWidth/2 + state.x * scale;
+  ctx.strokeStyle = '#4a4a6e';
+  ctx.lineWidth = 3 * dpr;
+  ctx.setLineDash([8*dpr, 6*dpr]);
+  ctx.beginPath();
+  ctx.moveTo(cx - trackWidth/2, groundY - 10*dpr);
+  ctx.lineTo(cx + trackWidth/2, groundY - 10*dpr);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Cart position
+  const cartX = cx + state.x * scale;
+  const cartY = groundY - 10*dpr;
+  const cartW = 80 * dpr;
+  const cartH = 40 * dpr;
+
+  // Pendulum
+  const pendLen = params.L * scale * 2;
+  const pendX = cartX + pendLen * Math.sin(state.theta);
+  const pendY = cartY - cartH/2 - pendLen * Math.cos(state.theta);
+
+  // Trail
+  if (showTrail) {
+    trail.push({ x: pendX, y: pendY });
+    if (trail.length > maxTrail) trail.shift();
+
+    if (trail.length > 2) {
+      ctx.beginPath();
+      ctx.moveTo(trail[0].x, trail[0].y);
+      for (let i = 1; i < trail.length; i++) {
+        ctx.lineTo(trail[i].x, trail[i].y);
+      }
+      ctx.strokeStyle = `rgba(255,68,68,0.15)`;
+      ctx.lineWidth = 2 * dpr;
+      ctx.stroke();
+
+      // Fade trail with dots
+      for (let i = 0; i < trail.length; i += 3) {
+        const alpha = (i / trail.length) * 0.4;
+        ctx.beginPath();
+        ctx.arc(trail[i].x, trail[i].y, 2 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,68,68,${alpha})`;
+        ctx.fill();
+      }
+    }
+  }
+
+  // Force arrow
+  if (Math.abs(controlForce + userForce) > 0.5) {
+    const totalF = controlForce + userForce;
+    const arrowLen = Math.sign(totalF) * Math.min(Math.abs(totalF) * 2, 100) * dpr;
+    const ay = cartY - cartH/2;
+    ctx.beginPath();
+    ctx.moveTo(cartX, ay);
+    ctx.lineTo(cartX + arrowLen, ay);
+    ctx.strokeStyle = totalF > 0 ? '#44ff88' : '#ff4444';
+    ctx.lineWidth = 3 * dpr;
+    ctx.stroke();
+    // Arrowhead
+    const dir = Math.sign(arrowLen);
+    ctx.beginPath();
+    ctx.moveTo(cartX + arrowLen, ay);
+    ctx.lineTo(cartX + arrowLen - 10*dir*dpr, ay - 6*dpr);
+    ctx.lineTo(cartX + arrowLen - 10*dir*dpr, ay + 6*dpr);
+    ctx.closePath();
+    ctx.fillStyle = totalF > 0 ? '#44ff88' : '#ff4444';
+    ctx.fill();
+  }
+
+  // Pendulum rod
+  ctx.beginPath();
+  ctx.moveTo(cartX, cartY - cartH/2);
+  ctx.lineTo(pendX, pendY);
+  ctx.strokeStyle = '#ccccdd';
+  ctx.lineWidth = 4 * dpr;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Pendulum rod shadow/glow
+  ctx.beginPath();
+  ctx.moveTo(cartX, cartY - cartH/2);
+  ctx.lineTo(pendX, pendY);
+  ctx.strokeStyle = 'rgba(255,68,68,0.15)';
+  ctx.lineWidth = 10 * dpr;
+  ctx.stroke();
+
+  // Cart body
+  ctx.fillStyle = '#cc2222';
+  ctx.strokeStyle = '#ff4444';
+  ctx.lineWidth = 2 * dpr;
+  const cr = 8 * dpr;
+  ctx.beginPath();
+  ctx.roundRect(cartX - cartW/2, cartY - cartH, cartW, cartH, cr);
+  ctx.fill();
+  ctx.stroke();
+
+  // Cart detail lines
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 1 * dpr;
+  ctx.beginPath();
+  ctx.moveTo(cartX - cartW/4, cartY - cartH + 8*dpr);
+  ctx.lineTo(cartX - cartW/4, cartY - 8*dpr);
+  ctx.stroke();
+
+  // Wheels
+  const wheelR = 10 * dpr;
+  [cartX - cartW/3, cartX + cartW/3].forEach(wx => {
+    ctx.beginPath();
+    ctx.arc(wx, cartY + 2*dpr, wheelR, 0, Math.PI * 2);
+    ctx.fillStyle = '#666680';
+    ctx.fill();
+    ctx.strokeStyle = '#8888aa';
+    ctx.lineWidth = 2 * dpr;
+    ctx.stroke();
+    // Spoke
+    const spokeAngle = (state.x * scale / wheelR) % (Math.PI * 2);
+    ctx.beginPath();
+    ctx.moveTo(wx + wheelR*0.6*Math.cos(spokeAngle), cartY + 2*dpr + wheelR*0.6*Math.sin(spokeAngle));
+    ctx.lineTo(wx - wheelR*0.6*Math.cos(spokeAngle), cartY + 2*dpr - wheelR*0.6*Math.sin(spokeAngle));
+    ctx.strokeStyle = '#555570';
+    ctx.lineWidth = 2 * dpr;
+    ctx.stroke();
+  });
+
+  // Pivot
+  ctx.beginPath();
+  ctx.arc(cartX, cartY - cartH, 5 * dpr, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffcc44';
+  ctx.fill();
+
+  // Pendulum bob
+  const bobR = 16 * dpr;
+  // Glow
+  const gradient = ctx.createRadialGradient(pendX, pendY, 0, pendX, pendY, bobR * 3);
+  gradient.addColorStop(0, 'rgba(255,68,68,0.3)');
+  gradient.addColorStop(1, 'rgba(255,68,68,0)');
+  ctx.beginPath();
+  ctx.arc(pendX, pendY, bobR * 3, 0, Math.PI * 2);
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(pendX, pendY, bobR, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff3333';
+  ctx.fill();
+  ctx.strokeStyle = '#ff6666';
+  ctx.lineWidth = 2 * dpr;
+  ctx.stroke();
+
+  // Bob highlight
+  ctx.beginPath();
+  ctx.arc(pendX - 4*dpr, pendY - 4*dpr, bobR * 0.4, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fill();
+
+  // Setpoint indicator (dashed line upward)
+  ctx.setLineDash([4*dpr, 4*dpr]);
+  ctx.beginPath();
+  ctx.moveTo(cartX, cartY - cartH);
+  ctx.lineTo(cartX, cartY - cartH - pendLen - 30*dpr);
+  ctx.strokeStyle = 'rgba(68,255,136,0.2)';
+  ctx.lineWidth = 1.5 * dpr;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Position markers
+  ctx.fillStyle = 'rgba(136,136,170,0.5)';
+  ctx.font = `${10*dpr}px 'IBM Plex Mono', monospace`;
+  ctx.textAlign = 'center';
+  for (let mx = -5; mx <= 5; mx++) {
+    const markerX = cx + mx * scale;
+    ctx.fillText(`${mx}m`, markerX, groundY + 20*dpr);
+    ctx.beginPath();
+    ctx.moveTo(markerX, groundY);
+    ctx.lineTo(markerX, groundY + 6*dpr);
+    ctx.strokeStyle = 'rgba(136,136,170,0.5)';
+    ctx.lineWidth = 1*dpr;
+    ctx.stroke();
+  }
+}
+
+function drawPlot(canvas, data, label, color, range) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+  const dpr = devicePixelRatio;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(10,10,15,0.95)';
+  ctx.fillRect(0, 0, W, H);
+
+  const pad = 30 * dpr;
+  const plotW = W - 2 * pad;
+  const plotH = H - 2 * pad;
+
+  // Grid
+  ctx.strokeStyle = 'rgba(42,42,62,0.5)';
+  ctx.lineWidth = 1;
+  const midY = pad + plotH / 2;
+  ctx.beginPath(); ctx.moveTo(pad, midY); ctx.lineTo(pad + plotW, midY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad, pad); ctx.lineTo(pad, pad + plotH); ctx.stroke();
+
+  // Label
+  ctx.fillStyle = 'rgba(136,136,170,0.7)';
+  ctx.font = `${10*dpr}px 'IBM Plex Mono', monospace`;
+  ctx.textAlign = 'left';
+  ctx.fillText(label, pad + 4*dpr, pad + 12*dpr);
+
+  // Range labels
+  ctx.textAlign = 'right';
+  ctx.fillText(`${range.toFixed(1)}`, pad - 4*dpr, pad + 10*dpr);
+  ctx.fillText(`${(-range).toFixed(1)}`, pad - 4*dpr, pad + plotH);
+
+  // Data
+  const n = history.count;
+  if (n < 2) return;
+
+  ctx.beginPath();
+  let first = true;
+  for (let i = 0; i < n && i < historyLen; i++) {
+    const idx = (history.idx - n + i + historyLen) % historyLen;
+    const px = pad + (i / historyLen) * plotW;
+    const val = data[idx];
+    const py = midY - (val / range) * (plotH / 2);
+    const clampedPy = Math.max(pad, Math.min(pad + plotH, py));
+    if (first) { ctx.moveTo(px, clampedPy); first = false; }
+    else ctx.lineTo(px, clampedPy);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5 * dpr;
+  ctx.stroke();
+}
+
+// ============================================================
+//  UI UPDATES
+// ============================================================
+
+function updateStateDisplay() {
+  const deg = wrapAngle(state.theta) * 180 / Math.PI;
+  const degDot = state.thetadot * 180 / Math.PI;
+
+  document.getElementById('state-x').innerHTML = `${state.x.toFixed(2)} <span class="unit">m</span>`;
+  document.getElementById('state-xdot').innerHTML = `${state.xdot.toFixed(2)} <span class="unit">m/s</span>`;
+  document.getElementById('state-theta').innerHTML = `${deg.toFixed(1)} <span class="unit">°</span>`;
+  document.getElementById('state-thetadot').innerHTML = `${degDot.toFixed(0)} <span class="unit">°/s</span>`;
+
+  // Energy
+  const { m, L } = params;
+  const KE = 0.5 * (params.M * state.xdot**2 + m * (state.xdot**2 + L**2 * state.thetadot**2 + 2 * state.xdot * L * state.thetadot * Math.cos(state.theta)));
+  const PE = m * g * L * (1 + Math.cos(state.theta));
+  const TE = KE + PE;
+  const maxE = m * g * L * 2 + 5;
+
+  document.getElementById('ke-val').textContent = KE.toFixed(2) + ' J';
+  document.getElementById('pe-val').textContent = PE.toFixed(2) + ' J';
+  document.getElementById('te-val').textContent = TE.toFixed(2) + ' J';
+  document.getElementById('ke-bar').style.width = Math.min(100, KE/maxE*100) + '%';
+  document.getElementById('pe-bar').style.width = Math.min(100, PE/maxE*100) + '%';
+  document.getElementById('te-bar').style.width = Math.min(100, TE/maxE*100) + '%';
+
+  document.getElementById('force-display').textContent = (controlForce + userForce).toFixed(1);
+  document.getElementById('time-display').textContent = `t = ${simTime.toFixed(2)}s`;
+
+  // Settling detection
+  if (activeCtrl !== 'none' && !settled) {
+    if (Math.abs(wrapAngle(state.theta)) < 0.05 && Math.abs(state.thetadot) < 0.5 && Math.abs(state.x) < 0.1) {
+      settled = true;
+      settleTime = simTime;
+    }
+  }
+  document.getElementById('perf-settling').innerHTML = settleTime ? `${settleTime.toFixed(2)} <span class="unit">s</span>` : `— <span class="unit">s</span>`;
+  document.getElementById('perf-force').innerHTML = `${peakForce.toFixed(1)} <span class="unit">N</span>`;
+}
+
+function updateCtrlParams() {
+  const container = document.getElementById('ctrl-params');
+  container.innerHTML = '';
+
+  if (activeCtrl === 'pd') {
+    container.innerHTML = `
+      <div class="param-group">
+        <div class="param-label">Kp <span class="param-value" id="val-Kp">${gains.pd.Kp}</span></div>
+        <input type="range" id="param-Kp" min="10" max="500" step="5" value="${gains.pd.Kp}">
+      </div>
+      <div class="param-group">
+        <div class="param-label">Kd <span class="param-value" id="val-Kd">${gains.pd.Kd}</span></div>
+        <input type="range" id="param-Kd" min="1" max="100" step="1" value="${gains.pd.Kd}">
+      </div>`;
+    document.getElementById('param-Kp').addEventListener('input', e => {
+      gains.pd.Kp = parseFloat(e.target.value);
+      document.getElementById('val-Kp').textContent = gains.pd.Kp;
+    });
+    document.getElementById('param-Kd').addEventListener('input', e => {
+      gains.pd.Kd = parseFloat(e.target.value);
+      document.getElementById('val-Kd').textContent = gains.pd.Kd;
+    });
+  } else if (activeCtrl === 'lqr') {
+    container.innerHTML = `
+      <div style="font-size:11px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;padding:8px;background:var(--bg3);border-radius:6px;border:1px solid var(--border);">
+        K = [${K_lqr.map(k => k.toFixed(2)).join(', ')}]<br>
+        <span style="color:var(--green);font-size:10px;">Auto-computed via CARE</span>
+      </div>`;
+  } else if (activeCtrl === 'swingup') {
+    container.innerHTML = `
+      <div class="param-group">
+        <div class="param-label">Ke (energy gain) <span class="param-value" id="val-Ke">${gains.swingup.Ke}</span></div>
+        <input type="range" id="param-Ke" min="1" max="20" step="0.5" value="${gains.swingup.Ke}">
+      </div>
+      <div class="param-group">
+        <div class="param-label">Catch angle <span class="param-value" id="val-catch">${gains.swingup.catchAngle}°</span></div>
+        <input type="range" id="param-catch" min="10" max="60" step="5" value="${gains.swingup.catchAngle}">
+      </div>`;
+    document.getElementById('param-Ke').addEventListener('input', e => {
+      gains.swingup.Ke = parseFloat(e.target.value);
+      document.getElementById('val-Ke').textContent = gains.swingup.Ke;
+    });
+    document.getElementById('param-catch').addEventListener('input', e => {
+      gains.swingup.catchAngle = parseFloat(e.target.value);
+      document.getElementById('val-catch').textContent = gains.swingup.catchAngle + '°';
+    });
+  } else if (activeCtrl === 'mpc') {
+    container.innerHTML = `
+      <div class="param-group">
+        <div class="param-label">Horizon N <span class="param-value" id="val-mpcN">${gains.mpc.horizon}</span></div>
+        <input type="range" id="param-mpcN" min="5" max="30" step="1" value="${gains.mpc.horizon}">
+      </div>
+      <div class="param-group">
+        <div class="param-label">Q (angle weight) <span class="param-value" id="val-mpcQ">${gains.mpc.Q_theta}</span></div>
+        <input type="range" id="param-mpcQ" min="10" max="500" step="10" value="${gains.mpc.Q_theta}">
+      </div>
+      <div class="param-group">
+        <div class="param-label">R (effort weight) <span class="param-value" id="val-mpcR">${gains.mpc.R}</span></div>
+        <input type="range" id="param-mpcR" min="0.001" max="1" step="0.005" value="${gains.mpc.R}">
+      </div>`;
+    document.getElementById('param-mpcN').addEventListener('input', e => {
+      gains.mpc.horizon = parseInt(e.target.value);
+      document.getElementById('val-mpcN').textContent = gains.mpc.horizon;
+    });
+    document.getElementById('param-mpcQ').addEventListener('input', e => {
+      gains.mpc.Q_theta = parseFloat(e.target.value);
+      document.getElementById('val-mpcQ').textContent = gains.mpc.Q_theta;
+    });
+    document.getElementById('param-mpcR').addEventListener('input', e => {
+      gains.mpc.R = parseFloat(e.target.value);
+      document.getElementById('val-mpcR').textContent = gains.mpc.R;
+    });
+  } else if (activeCtrl === 'nn') {
+    const isActive = rl.active;
+    container.innerHTML = `
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button class="action-btn ${isActive ? '' : 'primary'}" id="btn-nn-toggle" style="flex:1;text-align:center">
+          ${isActive ? '■ Stop' : '▶ Train'}
+        </button>
+        <button class="action-btn" id="btn-nn-reset" style="flex:1;text-align:center" title="Wipe network and start over">
+          ↺ Reset Net
+        </button>
+      </div>
+      <div class="param-group">
+        <div class="param-label">Speed (steps/frame) <span class="param-value" id="val-rlSpeed">${rl.speed}</span></div>
+        <input type="range" id="param-rlSpeed" min="1" max="30" step="1" value="${rl.speed}">
+      </div>
+      <div class="param-group">
+        <div class="param-label">Max force <span class="param-value" id="val-rlForce">${maxForce}</span></div>
+        <input type="range" id="param-rlForce" min="5" max="50" step="1" value="${maxForce}">
+      </div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;margin-top:8px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="color:var(--text-dim)">Episode</span>
+          <span style="color:var(--cyan)" id="nn-episode">${rl.episode}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="color:var(--text-dim)">Avg Reward</span>
+          <span style="color:var(--yellow)" id="nn-avgrew">${rl.avgRewards.length ? rl.avgRewards[rl.avgRewards.length-1].toFixed(1) : '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="color:var(--text-dim)">Best Reward</span>
+          <span style="color:var(--green)" id="nn-bestrew">${rl.bestReward > -Infinity ? rl.bestReward.toFixed(1) : '—'}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="color:var(--text-dim)">Actor</span>
+          <span style="color:var(--text-dim)">4→64→64→1</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="color:var(--text-dim)">Critic</span>
+          <span style="color:var(--text-dim)">4→64→64→1</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--text-dim)">Algorithm</span>
+          <span style="color:var(--text-dim)">PPO (Gaussian)</span>
+        </div>
+      </div>`;
+    document.getElementById('btn-nn-toggle').addEventListener('click', () => {
+      if (rl.active) {
+        rl.stop();
+      } else {
+        if (!rl.actor) rl.init(); else rl.active = true;
+        state = rl.randomInitState();
+        trail = [];
+      }
+      updateCtrlParams();
+    });
+    document.getElementById('btn-nn-reset').addEventListener('click', () => {
+      rl.stop();
+      rl.init();
+      rl.stop(); // init sets active=true, we want stopped to review
+      state = { x: 0, xdot: 0, theta: 0.02, thetadot: 0 };
+      trail = [];
+      updateCtrlParams();
+    });
+    document.getElementById('param-rlSpeed').addEventListener('input', e => {
+      rl.speed = parseInt(e.target.value);
+      document.getElementById('val-rlSpeed').textContent = rl.speed;
+    });
+    document.getElementById('param-rlForce').addEventListener('input', e => {
+      maxForce = parseInt(e.target.value);
+      document.getElementById('val-rlForce').textContent = maxForce;
+    });
+  }
+}
+
+function updateEqDisplay() {
+  const el = document.getElementById('eq-display');
+  const eqs = {
+    none: `<div class="eq-title">No Control</div>
+      Free nonlinear dynamics under gravity.<br>
+      <code>(M+m)ẍ + mLθ̈cosθ − mLθ̇²sinθ = −dẋ</code><br>
+      <code>mL²θ̈ + mLẍcosθ − mgLsinθ = 0</code>`,
+    pd: `<div class="eq-title">PD Controller</div>
+      <code>u = +Kp·θ + Kd·θ̇ − Kx·x − Kxd·ẋ</code><br><br>
+      Positive feedback on angle (chase the fall).<br>
+      Cart position regulation prevents drift.`,
+    lqr: `<div class="eq-title">LQR (Linear Quadratic Regulator)</div>
+      <code>u = −KX = −[K₁x + K₂ẋ + K₃θ + K₄θ̇]</code><br><br>
+      Optimal full-state feedback.<br>
+      K via continuous algebraic Riccati eqn.`,
+    swingup: `<div class="eq-title">Swing-Up + LQR</div>
+      <code>u = Ke·(E−E₀)·sign(θ̇·cosθ)</code><br><br>
+      Energy pumping (Åström-Furuta) until<br>
+      |θ| < catch angle, then LQR takes over.`,
+    mpc: `<div class="eq-title">Model Predictive Control</div>
+      <code>u = argmin Σ(X'QX + u'Ru)</code><br><br>
+      Receding horizon optimization.<br>
+      N=${gains.mpc.horizon} step lookahead, re-solved each step.`,
+    nn: `<div class="eq-title">Neural Network (PPO)</div>
+      <code>π(a|s) = N(μ_θ(s), σ²)</code><br>
+      <code>a ∈ [-F_max, F_max]</code><br><br>
+      Gaussian actor-critic, clipped surrogate.<br>
+      Reward: cos(θ) − 0.01·x²`
+  };
+  el.innerHTML = eqs[activeCtrl] || eqs.none;
+}
+
+// ============================================================
+//  INITIALIZATION & EVENTS
+// ============================================================
+
+function resetSim(startDown = null) {
+  if (startDown === null) {
+    startDown = (activeCtrl === 'swingup');
+  }
+  if (activeCtrl === 'nn') {
+    // For NN: start near upright; if training, use random init
+    state = rl.active ? rl.randomInitState() : { x: 0, xdot: 0, theta: 0.02, thetadot: 0 };
+    if (rl.active) { rl.step = 0; rl.episodeReward = 0; }
+  } else {
+    state = {
+      x: 0, xdot: 0,
+      theta: startDown ? Math.PI + 0.05 : 0.02,
+      thetadot: 0
+    };
+  }
+  simTime = 0;
+  peakForce = 0;
+  settled = false;
+  settleTime = null;
+  trail = [];
+  history.count = 0;
+  history.idx = 0;
+}
+
+// System parameter sliders
+['M', 'm', 'L', 'd'].forEach(p => {
+  const el = document.getElementById(`param-${p}`);
+  el.addEventListener('input', e => {
+    params[p] = parseFloat(e.target.value);
+    document.getElementById(`val-${p}`).textContent =
+      p === 'd' ? params[p].toFixed(2) : params[p].toFixed(p === 'm' ? 2 : 1) + (p === 'd' ? '' : p === 'L' ? ' m' : ' kg');
+    computeLQR();
+    updateCtrlParams();
+  });
+});
+
+// Controller buttons
+document.querySelectorAll('.controller-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.controller-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeCtrl = btn.dataset.ctrl;
+    if (btn.dataset.ctrl !== 'nn' && rl.active) rl.stop();
+    document.getElementById('ctrl-name').textContent =
+      { none: 'None', pd: 'PD', lqr: 'LQR', swingup: 'Swing-Up + LQR', mpc: 'MPC', nn: 'Neural Net (RL)' }[activeCtrl];
+    computeLQR();
+    updateCtrlParams();
+    updateEqDisplay();
+    resetSim();
+  });
+});
+
+// Action buttons
+document.getElementById('btn-reset').addEventListener('click', () => resetSim());
+document.getElementById('btn-perturb').addEventListener('click', () => {
+  state.thetadot += (Math.random() - 0.5) * 10;
+  state.xdot += (Math.random() - 0.5) * 3;
+});
+document.getElementById('btn-pause').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('btn-pause').textContent = paused ? '▶ Play' : '⏸ Pause';
+});
+document.getElementById('btn-trail').addEventListener('click', () => {
+  showTrail = !showTrail;
+  if (!showTrail) trail = [];
+  document.getElementById('btn-trail').textContent = showTrail ? '◌ Trail' : '○ No Trail';
+});
+
+// Keyboard
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === ' ') { e.preventDefault(); document.getElementById('btn-pause').click(); }
+  if (e.key === 'r' || e.key === 'R') resetSim();
+  if (e.key === 'p' || e.key === 'P') document.getElementById('btn-perturb').click();
+});
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+// Mouse drag on cart
+simCanvas.addEventListener('mousedown', e => {
+  const rect = simCanvas.getBoundingClientRect();
+  const mx = (e.clientX - rect.left) * devicePixelRatio;
+  const scale = Math.min(simCanvas.width, simCanvas.height) * 0.25;
+  const cx = simCanvas.width / 2 - state.x * scale * 0.3;
+  const cartScreenX = cx + state.x * scale;
+  if (Math.abs(mx - cartScreenX) < 50 * devicePixelRatio) {
+    dragging = true;
+    dragStartX = e.clientX;
+  }
+});
+
+simCanvas.addEventListener('mousemove', e => {
+  if (dragging) {
+    const dx = (e.clientX - dragStartX) * 0.02;
+    userForce = -dx * 20;
+  }
+});
+
+simCanvas.addEventListener('mouseup', () => { dragging = false; userForce = 0; });
+simCanvas.addEventListener('mouseleave', () => { dragging = false; userForce = 0; });
+
+// ============================================================
+//  MAIN LOOP
+// ============================================================
+
+let lastTime = performance.now();
+let frameCount = 0;
+let fpsTimer = 0;
+
+function loop(now) {
+  requestAnimationFrame(loop);
+
+  // FPS counter
+  frameCount++;
+  fpsTimer += now - lastTime;
+  lastTime = now;
+  if (fpsTimer > 500) {
+    document.getElementById('fps-display').textContent = Math.round(frameCount * 1000 / fpsTimer) + ' fps';
+    frameCount = 0;
+    fpsTimer = 0;
+  }
+
+  if (paused) {
+    drawSim();
+    return;
+  }
+
+  // Keyboard force
+  const keyForce = ((keys['ArrowLeft'] ? 15 : 0) - (keys['ArrowRight'] ? 15 : 0));
+
+  // How many full physics cycles per frame (training runs faster)
+  const cycles = (activeCtrl === 'nn' && rl.active) ? rl.speed : 1;
+
+  for (let cyc = 0; cyc < cycles; cyc++) {
+    // RL: compute action ONCE per step, hold it for all substeps
+    if (activeCtrl === 'nn' && rl.active) {
+      rl.computeAction(state);
+    }
+
+    // Physics steps (substeps use the same cached action)
+    for (let i = 0; i < stepsPerFrame; i++) {
+      controlForce = computeControl(state);
+      const totalForce = controlForce + userForce + keyForce;
+      peakForce = Math.max(peakForce, Math.abs(totalForce));
+      state = rk4Step(state, totalForce, dt);
+      simTime += dt;
+    }
+
+    // RL: record step, check done, trigger PPO training when rollout full
+    if (activeCtrl === 'nn' && rl.active) {
+      const done = rl.checkDone(state);
+      const theta_r = wrapAngle(state.theta);
+      const reward = Math.cos(theta_r) - 0.01 * state.x * state.x;
+      rl.recordStep(reward, done);
+
+      if (done) rl.endEpisode();
+
+      if (rl.shouldTrain()) {
+        const bsVal = done ? 0 : rl.critic.forward(normalizeState(state));
+        rl.trainPPO(bsVal);
+      }
+
+      if (done) {
+        state = rl.randomInitState();
+        trail = [];
+        const epEl = document.getElementById('nn-episode');
+        const avgEl = document.getElementById('nn-avgrew');
+        const bestEl = document.getElementById('nn-bestrew');
+        if (epEl) epEl.textContent = rl.episode;
+        if (avgEl) avgEl.textContent = rl.avgRewards.length ? rl.avgRewards[rl.avgRewards.length-1].toFixed(1) : '—';
+        if (bestEl) bestEl.textContent = rl.bestReward > -Infinity ? rl.bestReward.toFixed(1) : '—';
+      }
+    }
+  }
+
+  // Record history for plots
+  history.theta[history.idx] = wrapAngle(state.theta) * 180 / Math.PI;
+  history.x[history.idx] = state.x;
+  history.force[history.idx] = controlForce;
+  history.idx = (history.idx + 1) % historyLen;
+  if (history.count < historyLen) history.count++;
+
+  // Render
+  drawSim();
+  drawPlot(plotTheta, history.theta, 'θ (deg)', '#ff4444', 200);
+
+  // During NN training, show reward curve instead of x plot
+  if (activeCtrl === 'nn' && rl.rewardHistory.length > 1) {
+    drawRewardPlot(plotX);
+  } else {
+    drawPlot(plotX, history.x, 'x (m)', '#4488ff', 5);
+  }
+
+  drawPlot(plotForce, history.force, 'Force (N)', '#44ff88', 50);
+  updateStateDisplay();
+}
+
+// Reward plot for RL training
+function drawRewardPlot(canvas) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const dpr = devicePixelRatio;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(10,10,15,0.95)';
+  ctx.fillRect(0, 0, W, H);
+
+  const pad = 30 * dpr;
+  const plotW = W - 2 * pad, plotH = H - 2 * pad;
+
+  // Label
+  ctx.fillStyle = 'rgba(136,136,170,0.7)';
+  ctx.font = `${10*dpr}px 'IBM Plex Mono', monospace`;
+  ctx.textAlign = 'left';
+  ctx.fillText('Steps survived / episode', pad + 4*dpr, pad + 12*dpr);
+
+  const rewards = rl.rewardHistory;
+  const avgs = rl.avgRewards;
+  const n = rewards.length;
+  if (n < 2) return;
+
+  // Auto-scale Y
+  let minR = Infinity, maxR = -Infinity;
+  for (let i = 0; i < n; i++) {
+    minR = Math.min(minR, rewards[i]);
+    maxR = Math.max(maxR, rewards[i]);
+  }
+  const rangeR = (maxR - minR) || 1;
+  const yMin = minR - rangeR * 0.1;
+  const yMax = maxR + rangeR * 0.1;
+
+  // Range labels
+  ctx.textAlign = 'right';
+  ctx.fillText(yMax.toFixed(0), pad - 4*dpr, pad + 10*dpr);
+  ctx.fillText(yMin.toFixed(0), pad - 4*dpr, pad + plotH);
+
+  // Zero line
+  if (yMin < 0 && yMax > 0) {
+    const zeroY = pad + plotH * (1 - (0 - yMin) / (yMax - yMin));
+    ctx.strokeStyle = 'rgba(42,42,62,0.8)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad, zeroY); ctx.lineTo(pad + plotW, zeroY); ctx.stroke();
+  }
+
+  // Raw rewards (dots)
+  ctx.fillStyle = 'rgba(68,136,255,0.25)';
+  const showN = Math.min(n, 500);
+  const startI = Math.max(0, n - showN);
+  for (let i = startI; i < n; i++) {
+    const px = pad + ((i - startI) / showN) * plotW;
+    const py = pad + plotH * (1 - (rewards[i] - yMin) / (yMax - yMin));
+    ctx.beginPath();
+    ctx.arc(px, Math.max(pad, Math.min(pad + plotH, py)), 2 * dpr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Moving average line
+  if (avgs.length > 1) {
+    ctx.beginPath();
+    let first = true;
+    const avgStart = Math.max(0, avgs.length - showN);
+    for (let i = avgStart; i < avgs.length; i++) {
+      const px = pad + ((i - avgStart) / showN) * plotW;
+      const py = pad + plotH * (1 - (avgs[i] - yMin) / (yMax - yMin));
+      const cy = Math.max(pad, Math.min(pad + plotH, py));
+      if (first) { ctx.moveTo(px, cy); first = false; }
+      else ctx.lineTo(px, cy);
+    }
+    ctx.strokeStyle = '#ffcc44';
+    ctx.lineWidth = 2 * dpr;
+    ctx.stroke();
+  }
+}
+
+// Init
+computeLQR();
+updateCtrlParams();
+updateEqDisplay();
+resetSim();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
