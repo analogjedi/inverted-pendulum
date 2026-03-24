@@ -1280,7 +1280,10 @@ function loop(now) {
     if (activeCtrl === 'nn' && rl.active) {
       const done = rl.checkDone(state);
       const theta_r = wrapAngle(state.theta);
-      const reward = Math.cos(theta_r) - 0.01 * state.x * state.x;
+      const reward = Math.cos(theta_r)
+                   - 0.01 * state.x * state.x
+                   - 0.001 * state.thetadot * state.thetadot
+                   - 0.001 * state.xdot * state.xdot;
       rl.recordStep(reward, done);
 
       if (done) rl.endEpisode();

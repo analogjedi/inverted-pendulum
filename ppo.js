@@ -5,7 +5,7 @@
 //  Depends on: physics.js (wrapAngle)
 // ============================================================
 
-let maxForce = 20;  // N, action clipping bound
+let maxForce = 40;  // N, action clipping bound
 
 function normalizeState(s) {
   // Keep inputs O(0.1-1) for typical RL operating range (near upright)
@@ -250,7 +250,7 @@ const rl = {
 
   episode: 0,
   step: 0,
-  maxSteps: 500,
+  maxSteps: 1000,
   episodeReward: 0,
   rewardHistory: [],
   avgRewards: [],
@@ -297,10 +297,10 @@ const rl = {
 
   randomInitState() {
     return {
-      x: (Math.random() - 0.5) * 0.6,
-      xdot: (Math.random() - 0.5) * 0.5,
-      theta: (Math.random() - 0.5) * 0.35,
-      thetadot: (Math.random() - 0.5) * 0.5
+      x: (Math.random() - 0.5) * 1.0,        // ±0.5m
+      xdot: (Math.random() - 0.5) * 1.0,      // ±0.5 m/s
+      theta: (Math.random() - 0.5) * 0.7,      // ±0.35 rad (~20°)
+      thetadot: (Math.random() - 0.5) * 2.0    // ±1.0 rad/s
     };
   },
 
