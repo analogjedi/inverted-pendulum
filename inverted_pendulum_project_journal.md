@@ -2,10 +2,10 @@
 
 ## Project Overview
 
-A single-file interactive web simulation (~2,040 lines HTML/JS/CSS) implementing a nonlinear inverted pendulum on a cart with five classical controllers and a neural network reinforcement learning controller. The simulation runs entirely client-side with no dependencies — pure vanilla JS, canvas rendering, and hand-rolled linear algebra.
+A multi-file interactive web simulation implementing a nonlinear inverted pendulum on a cart with five classical controllers and a neural network reinforcement learning controller. The simulation runs entirely client-side with no dependencies — pure vanilla JS, canvas rendering, and hand-rolled linear algebra.
 
-**File:** `inverted_pendulum.html`  
-**Deployment:** Static file, Vercel-ready (rename to `index.html`)  
+**Entry point:** `index.html`
+**Deployment:** Static files, Vercel-ready
 **Origin:** Inspired by a MathWorks LinkedIn post demonstrating PD, LQR, and MPC control in MATLAB.
 
 ---
@@ -168,9 +168,9 @@ Falls back to swing-up controller when |θ| > 0.6π.
 
 ### 3.1 Architecture Evolution
 
-The RL controller went through five major iterations. Understanding this history is critical for the next agent.
+The RL controller went through six major iterations.
 
-#### Attempt 1: Gaussian Continuous (FAILED)
+#### Attempt 1: Gaussian Continuous REINFORCE (FAILED)
 - **Network:** 4→64→64→1, linear output = force mean μ
 - **Policy:** π(a|s) = N(μ_θ(s), σ²), σ annealed from 10→1.5
 - **Bug:** `controllerNN()` was called on every physics substep (8/frame), drawing fresh noise each time. Only the last action was recorded. Trajectory data was inconsistent with actual forces applied.
@@ -187,42 +187,61 @@ The RL controller went through five major iterations. Understanding this history
 - Added σ bump on curriculum advancement
 - Relaxed gradient clipping from ±0.1 to ±0.5
 - Curriculum advanced to ~30°
-- **Core issue:** Gaussian policy gradient ∇log N(μ,σ²) = (a−μ)/σ² is a single noisy scalar. Insufficient signal for convergence at scale.
+- **Core issue:** Gaussian policy gradient ∇log N(μ,σ²) = (a−μ)/σ² is a single noisy scalar. Insufficient signal for convergence with REINFORCE over 500+ step episodes.
 - **Result:** Avg ~137, flat learning curve at 9,000+ episodes.
 
 #### Attempt 4: Discrete Softmax, 1 Hidden Layer (FAILED)
 - **Network:** 4→32→11, softmax output over 11 force levels
 - Clean gradient: ∇log π = one_hot(a) − probs (updates all logits simultaneously)
-- **Problem:** Single hidden layer lacks capacity for nonlinear state→action mapping. Can only create linear decision boundaries in 4D state space.
+- **Problem:** Single hidden layer lacks capacity for nonlinear state→action mapping.
 - **Result:** No meaningful learning.
 
-#### Attempt 5: Soft-DAC, 2 Hidden Layers (CURRENT — UNTESTED)
+#### Attempt 5: Soft-DAC, 2 Hidden Layers (SUPERSEDED)
 - **Network:** 4→64→64→21, softmax output
-- **Training:** Sample discrete actions (clean gradients)
+- **Training:** Sample discrete actions, REINFORCE gradients
 - **Inference:** u = Σ pᵢ · Fᵢ (smooth expected-value output)
-- **Reward:** +1 per step alive (simplest possible signal)
-- **Entropy bonus:** −β·log(p_a) added to advantage weight
-- **Status:** Deployed but not yet validated. This is where the next agent picks up.
+- **Problem:** Discrete-action REINFORCE still has high variance over long episodes. Superseded by PPO approach before thorough validation.
+
+#### Attempt 6: PPO with Continuous Gaussian Policy (CURRENT — WORKING)
+- **Algorithm:** Proximal Policy Optimization (PPO) with clipped surrogate objective
+- **Actor:** 4→64→64→1, tanh hidden layers, linear output × maxForce
+- **Critic:** 4→64→64→1, tanh hidden layers, linear value output
+- **Policy:** π(a|s) = N(μ_θ(s), σ²) with learnable σ via logStd parameter
+- **Key insight — output scaling:** μ = raw_network_output × maxForce. Without this, over-normalized inputs (÷[3,5,π,8]) produced activations of ~0.03, making the actor output ~0.03N — three orders of magnitude too small. Output scaling maps the network's natural operating range to physical force magnitudes.
+- **Key insight — no over-normalization:** Raw state values [x, ẋ, θ, θ̇] fed directly to the network. Typical magnitudes (0.1–0.5) are appropriate for Xavier-initialized weights with tanh activations.
+- **Result:** Avg reward ~158, best ~466, within just 206 episodes. First RL iteration to show clear, sustained learning.
 
 ### 3.2 Current RL Configuration
 
 ```javascript
-// Action space
-ACTIONS = [-50, -45, -40, ..., 0, ..., 40, 45, 50]  // 21 levels, 5N spacing
-NUM_ACTIONS = 21
+// File: ppo.js
 
-// Network: 4→64→64→21
-// Layer 1: W1[64×4], b1[64], tanh activation
-// Layer 2: W2[64×64], b2[64], tanh activation
-// Layer 3: W3[21×64], b3[21], softmax activation
-// Total parameters: ~5,700
+// Actor: 4→64→64→1 (Gaussian mean μ, scaled by maxForce)
+// Critic: 4→64→64→1 (scalar value V(s))
+// Total parameters: ~9,091 (4,545 per network + 1 logStd)
 
-// Training hyperparameters
-maxSteps = 1000       // episode length cap
-batchSize = 24        // episodes per gradient update
-lr = 0.003            // learning rate
+// State normalization: NONE (raw state values)
+// Output scaling: μ = raw_output × maxForce (default 20N)
+
+// PPO hyperparameters
+lr = 1e-3             // learning rate (Adam-like step via gradient clipping)
 gamma = 0.99          // discount factor
-entropyCoeff = 0.02   // entropy bonus weight
+gaeLambda = 0.95      // GAE lambda for advantage estimation
+clipRange = 0.2       // PPO clipping epsilon
+entCoeff = 0.001      // entropy bonus coefficient
+vfCoeff = 0.5         // value function loss coefficient
+maxGradNorm = 5.0     // global gradient norm clipping
+nSteps = 2048         // rollout buffer size (steps, not episodes)
+batchSize = 64        // mini-batch size
+nEpochs = 4           // PPO epochs per rollout
+
+// Exploration
+logStd_init = 2.0     // σ = exp(2.0) ≈ 7.4N — covers useful force range
+logStd_bounds = [-3, 2]  // σ range: [0.05N, 7.4N]
+
+// Episode configuration
+maxSteps = 500        // episode length cap
+maxForce = 20         // action clipping bound (N)
 
 // Initial state distribution
 x ~ U(-0.3, 0.3)
@@ -231,53 +250,110 @@ x ~ U(-0.3, 0.3)
 θ̇ ~ U(-0.25, 0.25)
 
 // Termination
-|θ| > 60° OR |x| > 4.0m OR step >= 1000
+|θ| > 60° OR |x| > 4.0m OR step >= 500
 
 // Reward
 r_t = 1.0 (per step alive)
 ```
 
-### 3.3 The Soft-DAC Concept
+### 3.3 PPO Gaussian Architecture — How It Works
 
-The key innovation in the current approach: **train discrete, deploy continuous.**
+The current approach uses **separate actor-critic networks** with a **continuous Gaussian policy**, trained with PPO's clipped surrogate objective.
 
-During **training**, the network samples from the softmax distribution and receives discrete gradients:
+#### Actor (Policy Network)
+
+The actor maps state to a force distribution:
+
+$$
+\mu = \text{maxForce} \cdot (W_3 \cdot \tanh(W_2 \cdot \tanh(W_1 \cdot s + b_1) + b_2) + b_3)
+$$
+
+$$
+\pi(a|s) = \mathcal{N}(\mu, \sigma^2), \quad \sigma = e^{\text{logStd}}
+$$
+
+**Output scaling** is the critical design choice. The network naturally operates in the [-1, 1] range due to Xavier initialization and tanh activations. Multiplying by `maxForce` maps this to physical force magnitudes. Without it, the actor output is ~0.03N — essentially zero control.
+
+The `logStd` parameter is **state-independent** (shared across all states) and learned via gradient ascent on the PPO objective. It starts at 2.0 (σ ≈ 7.4N) for broad initial exploration and decreases as the policy becomes confident.
+
+#### Critic (Value Network)
+
+The critic predicts expected cumulative reward from a given state:
+
+$$
+V(s) = W_3 \cdot \tanh(W_2 \cdot \tanh(W_1 \cdot s + b_1) + b_2) + b_3
+$$
+
+No output scaling — the critic operates in reward-space directly.
+
+#### Generalized Advantage Estimation (GAE)
+
+Advantages are computed backward through the rollout buffer:
+
+$$
+\hat{A}_t = \sum_{l=0}^{T-t} (\gamma \lambda)^l \delta_{t+l}, \quad \delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)
+$$
+
+Advantages are normalized to zero mean and unit variance before the PPO update.
+
+#### PPO Clipped Surrogate Objective
+
+For each sample in the mini-batch:
+
+$$
+r_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_\text{old}}(a_t|s_t)}
+$$
+
+$$
+L^\text{CLIP} = \min\left(r_t \hat{A}_t, \; \text{clip}(r_t, 1-\epsilon, 1+\epsilon) \hat{A}_t\right)
+$$
+
+The gradient flows through `∂log π/∂μ = (a - μ)/σ²` into `gradMu()`, which computes `∂μ/∂θ` via manual backpropagation (including the maxForce scaling factor at every layer).
+
+#### Hand-Rolled Backpropagation
+
+All gradients are computed analytically — no autograd library. The `gradMu()` method chains through:
+1. Output layer: `∂μ/∂W3[j] = a2[j] × maxForce`
+2. Layer 2 → output: `dA2[j] = W3[j] × maxForce × (1 - a2[j]²)`
+3. Layer 1 → layer 2: standard tanh derivative chain rule
+4. Input → layer 1: standard chain rule
+
+The maxForce factor propagates through the entire gradient as a constant multiplier, originating from the output scaling `μ = raw × maxForce`.
+
+#### Inference
+
+During inference (non-training), the action is simply:
 ```
-∇log π(a|s) = one_hot(a) − probs
+u = clip(μ, -maxForce, maxForce)
 ```
-This gradient updates ALL 21 logits simultaneously — taking action i and getting positive reward tells the network "action i was good AND actions 0..i-1, i+1..20 were relatively worse."
+No sampling noise — the deterministic mean provides smooth control. Uses the best-reward actor snapshot if available.
 
-During **inference**, the output force is the **expected value** over the probability distribution:
-```
-u = Σᵢ pᵢ · Fᵢ
-```
-This is analogous to a weighted resistor DAC: the softmax probabilities are tap weights, the discrete force levels are reference voltages. As the policy becomes confident, probabilities sharpen and the output converges to a specific force — but transitions are always smooth.
+### 3.4 Exploration via Learnable σ
 
-With 21 levels spanning ±50N in 5N steps, the effective force resolution is continuous because probability-weighted interpolation between adjacent levels produces arbitrary intermediate values.
+The Gaussian standard deviation σ = exp(logStd) controls the exploration-exploitation tradeoff:
 
-### 3.4 Entropy Bonus
-
-The entropy bonus prevents premature policy collapse:
-
-```
-w = advantage + β · (−log p_a)
-```
-
-When p_a is small (unlikely action), −log(p_a) is large, giving extra gradient weight to explore that action. When β = 0, pure REINFORCE. Setting β too high prevents the policy from ever sharpening (stays uniform). Recommended starting range: 0.01–0.05.
+- **Initial:** logStd = 2.0 → σ ≈ 7.4N. Actions are dominated by noise, exploring the full force range.
+- **During training:** PPO gradient on logStd naturally decreases σ as the policy improves. The entropy coefficient (0.001) provides a small bonus to prevent premature collapse.
+- **Converged:** logStd ≈ -1 to -2 → σ ≈ 0.1–0.4N. Precise, low-noise control.
+- **Clamped to [-3, 2]** to prevent numerical issues (σ too small → log-prob explosion, σ too large → no learning signal).
 
 ### 3.5 Key Lessons Learned
 
-1. **Action caching is critical.** The physics runs 8 substeps per RL step. The RL action must be computed ONCE and held constant for all substeps. Otherwise the trajectory data is inconsistent with the actual forces applied.
+1. **Output scaling is critical.** With Xavier initialization and typical input magnitudes (0.1–0.5), the raw network output is O(0.3). For a pendulum requiring 10–20N forces, the output must be scaled by `maxForce`. Without scaling, the network whispers at the pendulum when it needs to shout.
 
-2. **Gaussian continuous policies are a poor match for REINFORCE on this problem.** The gradient ∇log N(μ,σ²) = (a−μ)/σ² is a single scalar — too noisy for credit assignment over 500+ step episodes. Discrete softmax gives a gradient vector that updates all action preferences simultaneously.
+2. **Don't over-normalize inputs.** Dividing by the maximum possible range (e.g., θ/π, x/3) makes inputs O(0.03) for typical operating conditions. This attenuates through each layer, producing vanishingly small outputs and gradients. Raw state values or mild normalization works better.
 
-3. **Reward simplicity matters.** Elaborate reward shaping (cosine, quadratic penalties, effort terms) creates a complex optimization landscape with many local optima. Survival reward (+1/step) has one clear gradient: "stay upright longer."
+3. **Initial σ must cover the useful force range.** Starting with σ = 1N when the pendulum needs ±10–20N corrections means the agent barely explores. logStd = 2.0 (σ ≈ 7.4N) provides exploration across the full action range.
 
-4. **Network capacity matters.** Single hidden layer cannot represent the nonlinear regions needed for pendulum control (small corrections near vertical, aggressive corrections at large angles). Two hidden layers are necessary.
+4. **Action caching is critical.** The physics runs 8 substeps per RL step. The RL action must be computed ONCE and held constant for all substeps. Otherwise the trajectory data is inconsistent with the actual forces applied.
 
-5. **Curriculum learning is fragile.** Threshold tuning, σ interactions, and catastrophic forgetting when difficulty increases all add failure modes. Better to start with a reasonable initial state distribution and let the survival reward provide natural curriculum.
+5. **PPO succeeds where REINFORCE failed.** PPO's clipped surrogate, value baseline (critic), and GAE provide stable, low-variance gradient estimates that REINFORCE (even with discrete softmax) couldn't match on this problem. The actor-critic structure was essential.
 
-6. **The sign convention is everything.** The inverted pendulum is non-minimum phase. Every feedback term "chases" the error rather than opposing it. Getting this wrong produces runaway divergence that looks like a gain problem but is actually a sign problem.
+6. **Reward simplicity matters.** Survival reward (+1/step) has one clear gradient: "stay upright longer." Elaborate reward shaping creates optimization complexity without proportional benefit.
+
+7. **Network capacity matters.** Two hidden layers (64 units each) are necessary for the nonlinear state→action mapping. Single hidden layer can only create linear decision boundaries in 4D state space.
+
+8. **Hand-rolled backprop must respect output scaling.** The maxForce factor in `μ = raw × maxForce` must propagate through the entire `gradMu()` computation. Missing it anywhere silently breaks the gradient magnitude.
 
 ---
 
@@ -323,19 +399,19 @@ TE = KE + PE
 
 ## 5. Known Issues & Next Steps
 
-### 5.1 RL Controller (Priority)
+### 5.1 RL Controller
 
-The Soft-DAC REINFORCE implementation (Attempt 5) has not been validated. The next agent should:
+The PPO Gaussian implementation (Attempt 6) is working — avg reward ~158, best ~466 at episode 206. Potential improvements:
 
-1. **Run training at speed 10–30, LR 0.003, entropy 0 initially.** Monitor the "Steps survived / episode" plot. Success = average approaching 500+ within 1,000–2,000 episodes.
+1. **Training to convergence.** Let training run until avg reward stabilizes near 400–500. Monitor σ (logStd) — it should decrease from ~2.0 to negative values as the policy sharpens.
 
-2. **If flat/no learning after 500 episodes:** The initial state distribution may be too wide. Try narrowing θ range from ±0.175 to ±0.05 rad in `randomInitState()`. Or try increasing batch size to 32–48 for lower variance gradients.
+2. **Network serialization.** Export/import trained weights to localStorage or JSON so training persists across browser sessions. Currently all progress is lost on page reload.
 
-3. **If learning plateaus at ~100–200 steps:** The network may be collapsing to a single action. Increase entropy coefficient to 0.02–0.05. Check the softmax distribution — if one action dominates at >90% probability in all states, entropy bonus is needed.
+3. **Learning rate scheduling.** A decaying learning rate (e.g., linear decay over training) could improve final performance by reducing oscillation near convergence.
 
-4. **If learning succeeds but inference is jittery:** The soft-DAC expected value should be smooth, but if the policy is very peaked (one action at 99%), it's effectively discrete. Consider temperature scaling the softmax during inference: `probs = softmax(logits / T)` with T > 1 to spread the distribution.
+4. **Behavioral cloning warm-start.** Collect LQR trajectories and pre-train the actor via supervised learning before RL fine-tuning. Would dramatically accelerate early training.
 
-5. **Advanced: transition to PPO.** REINFORCE has high variance. If the basic approach works but convergence is slow, implement PPO (clipped surrogate objective) for more sample-efficient training. The network architecture and action space can stay the same.
+5. **Hyperparameter sensitivity.** The current config works but hasn't been tuned. Candidates: nEpochs (try 10, matching SB3 default), lr (try 3e-4), nSteps (try 4096 for lower variance).
 
 ### 5.2 Other Potential Improvements
 
@@ -347,35 +423,23 @@ The Soft-DAC REINFORCE implementation (Attempt 5) has not been validated. The ne
 
 ### 5.3 Deployment
 
-The file is a single static HTML page with:
-- No external dependencies (all JS inline)
+Static file set with no build step:
+- No external dependencies (all JS inline or in separate .js files)
 - Fonts loaded from Google Fonts CDN (cosmetic only)
-- No build step required
-- Vercel deployment: rename to `index.html`, drop in folder, `vercel deploy`
+- Vercel deployment: drop files in folder, `vercel deploy`
 
 ---
 
 ## 6. File Structure Reference
 
 ```
-Lines 1–400:     HTML structure + CSS styling
-Lines 400–475:   Controller buttons, parameter sliders, action buttons
-Lines 475–555:   Right panel (state display, energy, equations, performance)
-Lines 555–610:   JS globals, state initialization, parameters, gains
-Lines 610–660:   Nonlinear dynamics function + RK4 integrator
-Lines 660–860:   Classical controllers (PD, LQR with CARE, Swing-Up, MPC)
-Lines 860–1170:  Neural network + REINFORCE trainer (PolicyNet class, rl object)
-Lines 1170–1180: computeControl() dispatcher
-Lines 1180–1210: Canvas setup and resize handling
-Lines 1210–1320: Main simulation renderer (drawSim)
-Lines 1320–1380: Strip plot renderer (drawPlot)
-Lines 1380–1470: State display + energy computation
-Lines 1470–1550: Controller parameter UI builder (updateCtrlParams)
-Lines 1550–1580: Equation display updater
-Lines 1580–1620: Reset, events, keyboard, mouse handlers
-Lines 1620–1750: Main loop (with RL training integration)
-Lines 1750–1850: Reward plot renderer
-Lines 1850–1870: Initialization
+index.html       Entry point — HTML/CSS layout, UI controls, simulation loop, rendering
+physics.js       Nonlinear equations of motion, RK4 integrator, wrapAngle()
+pd.js            PD controller
+lqr.js           LQR controller (CARE solver via ODE integration)
+swingup.js       Swing-Up + LQR (Åström-Furuta energy pumping)
+mpc.js           Simplified nonlinear MPC (gradient-descent optimizer)
+ppo.js           RL controller — ActorNet, CriticNet, PPO trainer (~500 lines)
 ```
 
 ---
@@ -393,3 +457,4 @@ Lines 1850–1870: Initialization
 | RL substep noise | Network can't learn; trajectory data inconsistent | Fresh random action every substep, only last recorded | Cache action once per RL step |
 | Curriculum threshold | Never advances past 2.9° | Threshold 900 unreachable during noisy training | Lowered to achievable value |
 | Entropy bonus | Rewarded popular actions (anti-exploration) | Formula log(N)+log(p) instead of −log(p) | Fixed to −log(p_a) |
+| RL output magnitude | Flat reward ~40, no learning for thousands of episodes | Over-normalized inputs (÷[3,5,π,8]) → activations ~0.03 → μ ≈ 0.03N (three orders of magnitude too small) | (1) Raw state values (no normalization), (2) output scaling μ = raw × maxForce, (3) initial logStd = 2.0 for σ ≈ 7.4N exploration |

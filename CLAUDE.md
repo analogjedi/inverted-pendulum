@@ -4,36 +4,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Single-file interactive web simulation of an inverted pendulum on a cart, with five classical controllers and a neural network RL controller. Runs entirely client-side with zero dependencies — vanilla JS, HTML5 Canvas, hand-rolled linear algebra.
-
-**Main file:** `inverted_pendulum_RL.html` (~2,038 lines of HTML/CSS/JS)
+Interactive web simulation of an inverted pendulum on a cart, with five classical controllers and a neural network RL controller. Runs entirely client-side with zero dependencies — vanilla JS, HTML5 Canvas, hand-rolled linear algebra.
 
 ## Running
 
-Open `inverted_pendulum_RL.html` in any modern browser. No build step, no server, no install.
+Open `index.html` in any modern browser. No build step, no server, no install.
 
-## Architecture (within the single file)
+## File Structure
 
-The file is structured in this order:
+| File | Purpose |
+|------|---------|
+| `index.html` | HTML/CSS layout, UI controls, simulation loop, rendering (~1,300 lines) |
+| `physics.js` | Nonlinear equations of motion, RK4 integrator, `wrapAngle()` |
+| `pd.js` | PD controller |
+| `lqr.js` | LQR controller (solves CARE via ODE integration, hand-rolled) |
+| `swingup.js` | Swing-Up + LQR (Åström-Furuta energy pumping with catch) |
+| `mpc.js` | Simplified nonlinear MPC via gradient descent |
+| `ppo.js` | RL controller — PPO with continuous Gaussian policy (~500 lines) |
 
-1. **CSS + HTML** (lines 1–552) — Dark-themed 3-panel layout: left sidebar (controller selection/params), center (canvas + plots), right sidebar (state display, energy bars, equations, performance metrics).
+## Architecture
 
-2. **Physics engine** (lines ~553–660) — Full nonlinear coupled equations of motion, solved with RK4 at 500 Hz (dt=0.002s, 8 substeps per render frame). State vector: `[x, ẋ, θ, θ̇]` where θ=0 is upright.
+1. **Physics engine** (`physics.js`) — Full nonlinear coupled equations of motion, solved with RK4 at 500 Hz (dt=0.002s, 8 substeps per render frame). State vector: `[x, ẋ, θ, θ̇]` where θ=0 is upright.
 
-3. **Classical controllers** (lines ~660–860):
-   - **PD** — Proportional-derivative on angle and position
-   - **LQR** — Solves CARE via ODE integration (hand-rolled, no library)
-   - **Swing-Up + LQR** — Åström-Furuta energy pumping with catch transition to LQR
-   - **MPC** — Simplified nonlinear MPC via gradient descent with finite-difference gradients
+2. **Classical controllers** (`pd.js`, `lqr.js`, `swingup.js`, `mpc.js`) — PD, LQR, Swing-Up+LQR, and MPC.
 
-4. **RL controller** (lines ~860–1,214):
-   - PolicyNet: 4→64→64→21 MLP with tanh activations and softmax output
-   - Training: REINFORCE with entropy bonus, 24-episode batches
-   - **Soft-DAC inference**: trains on discrete actions (21 force levels, −50N to +50N), deploys as weighted average `Σ pᵢ·Fᵢ` for smooth continuous control
+3. **RL controller** (`ppo.js`) — Actor-critic PPO with continuous Gaussian policy:
+   - **Actor:** 4→64→64→1 MLP, tanh hidden layers, linear output scaled by `maxForce`
+   - **Critic:** 4→64→64→1 MLP, tanh hidden layers, linear value output
+   - **Policy:** π(a|s) = N(μ_θ(s), σ²) where μ = raw_network_output × maxForce
+   - **Training:** PPO clipped surrogate objective, GAE advantages (λ=0.95), 2048-step rollout buffer, 64-sample mini-batches, 4 epochs per update
+   - **Inference:** deterministic μ (no sampling noise), clipped to ±maxForce
+   - **Key design:** output scaling by `maxForce` maps network's natural [-1,1] operating range to physical force magnitudes; raw state values (no normalization) preserve meaningful input magnitudes
 
-5. **Simulation loop** (`loop()`, lines ~1,620–1,750) — Each frame: compute control → 8× RK4 substeps → RL trajectory caching → canvas render + plot update → episode termination check → batch training trigger.
+4. **Simulation loop** (`index.html`) — Each frame: compute control → 8× RK4 substeps → RL trajectory caching → canvas render + plot update → episode termination check → PPO training trigger when rollout buffer fills.
 
-6. **Rendering & UI** (lines ~1,210–2,038) — Canvas drawing (cart, pendulum, trail, force arrow, grid), 3 time-series plots (θ, x/reward, force), energy bars, equation display.
+5. **Rendering & UI** (`index.html`) — Dark-themed 3-panel layout, canvas drawing (cart, pendulum, trail, force arrow, grid), 3 time-series plots, energy bars, equation display.
 
 ## Critical Physics Detail
 
@@ -44,10 +49,11 @@ The system is **non-minimum phase**: positive force → negative angular acceler
 - `state` — `{x, xdot, theta, thetadot}` current system state
 - `params` — `{M, m, L, d}` user-tunable physical parameters
 - `activeCtrl` — string selecting active controller
-- `rl` — RL trainer object (network weights, training buffers, hyperparameters)
+- `rl` — RL trainer object (network weights, training buffers, hyperparameters) — defined in `ppo.js`
+- `maxForce` — action clipping bound (default 20N) — defined in `ppo.js`
 - `history` — 600-sample ring buffers for the time-series plots
 
 ## Reference Documents
 
-- `inverted_pendulum_project_journal.md` — Detailed history of all 5 RL iterations, every bug fix, and lessons learned. Read this before modifying controllers or RL.
-- `rl-architecture-plan.txt` — Reference notes on PPO + MLP for CartPole (not all implemented).
+- `inverted_pendulum_project_journal.md` — Detailed history of all 6 RL iterations, every bug fix, and lessons learned. Read this before modifying controllers or RL.
+- `rl-architecture-plan.txt` — Reference notes on PPO + MLP for CartPole (background research).
