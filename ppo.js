@@ -505,6 +505,90 @@ const rl = {
     const force = Math.max(-maxForce, Math.min(maxForce, net.mu));
     this.prevForce = force;
     return force;
+  },
+
+  // --- Save/Load network state ---
+
+  _serializeNet(net) {
+    return {
+      W1: Array.from(net.W1), b1: Array.from(net.b1),
+      W2: Array.from(net.W2), b2: Array.from(net.b2),
+      W3: Array.from(net.W3), b3: Array.from(net.b3),
+      logStd: net.logStd !== undefined ? net.logStd : undefined
+    };
+  },
+
+  _loadNet(net, data) {
+    net.W1.set(data.W1); net.b1.set(data.b1);
+    net.W2.set(data.W2); net.b2.set(data.b2);
+    net.W3.set(data.W3); net.b3.set(data.b3);
+    if (data.logStd !== undefined) net.logStd = data.logStd;
+  },
+
+  save() {
+    if (!this.actor) return null;
+    const data = {
+      version: 2,
+      maxForce: maxForce,
+      actor: this._serializeNet(this.actor),
+      critic: this._serializeNet(this.critic),
+      bestActor: this.bestActor ? this._serializeNet(this.bestActor) : null,
+      episode: this.episode,
+      bestReward: this.bestReward,
+      rewardHistory: this.rewardHistory,
+      avgRewards: this.avgRewards
+    };
+    return JSON.stringify(data);
+  },
+
+  load(json) {
+    const data = JSON.parse(json);
+    if (!this.actor) this.init();
+    this.stop();
+    this._loadNet(this.actor, data.actor);
+    this._loadNet(this.critic, data.critic);
+    if (data.bestActor) {
+      this.bestActor = new ActorNet();
+      this._loadNet(this.bestActor, data.bestActor);
+    }
+    this.episode = data.episode || 0;
+    this.bestReward = data.bestReward || -Infinity;
+    this.rewardHistory = data.rewardHistory || [];
+    this.avgRewards = data.avgRewards || [];
+    if (data.maxForce) maxForce = data.maxForce;
+    this.step = 0;
+    this.episodeReward = 0;
+    this.prevForce = 0;
+    this.perturbStep = -1;
+    this.rollout = { states: [], actions: [], rewards: [], dones: [], logProbs: [], values: [] };
+  },
+
+  saveToFile() {
+    const json = this.save();
+    if (!json) return;
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `pendulum-ppo-ep${this.episode}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  },
+
+  loadFromFile() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        this.load(ev.target.result);
+        if (typeof updateCtrlParams === 'function') updateCtrlParams();
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   }
 };
 

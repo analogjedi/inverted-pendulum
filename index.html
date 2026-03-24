@@ -1029,6 +1029,14 @@ function updateCtrlParams() {
           ↺ Reset Net
         </button>
       </div>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button class="action-btn" id="btn-nn-save" style="flex:1;text-align:center" title="Save weights to JSON file">
+          💾 Save
+        </button>
+        <button class="action-btn" id="btn-nn-load" style="flex:1;text-align:center" title="Load weights from JSON file">
+          📂 Load
+        </button>
+      </div>
       <div class="param-group">
         <div class="param-label">Speed (steps/frame) <span class="param-value" id="val-rlSpeed">${rl.speed}</span></div>
         <input type="range" id="param-rlSpeed" min="1" max="30" step="1" value="${rl.speed}">
@@ -1080,6 +1088,12 @@ function updateCtrlParams() {
       state = { x: 0, xdot: 0, theta: 0.02, thetadot: 0 };
       trail = [];
       updateCtrlParams();
+    });
+    document.getElementById('btn-nn-save').addEventListener('click', () => {
+      rl.saveToFile();
+    });
+    document.getElementById('btn-nn-load').addEventListener('click', () => {
+      rl.loadFromFile();
     });
     document.getElementById('param-rlSpeed').addEventListener('input', e => {
       rl.speed = parseInt(e.target.value);
