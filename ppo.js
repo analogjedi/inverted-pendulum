@@ -7,10 +7,13 @@
 
 let maxForce = 40;  // N, action clipping bound
 
-function normalizeState(s) {
-  // Keep inputs O(0.1-1) for typical RL operating range (near upright)
-  // Don't over-normalize — network needs meaningful input magnitudes
-  return [s.x, s.xdot, wrapAngle(s.theta), s.thetadot];
+function normalizeState(s, prevForce) {
+  // 6 inputs: [x, ẋ, sin(θ), cos(θ), θ̇, prevForce/maxForce]
+  // sin/cos eliminates angle discontinuity at ±π
+  // prevForce lets network smooth its own control output
+  const theta = wrapAngle(s.theta);
+  return [s.x, s.xdot, Math.sin(theta), Math.cos(theta), s.thetadot,
+          (prevForce || 0) / maxForce];
 }
 
 function randn() {
@@ -22,10 +25,10 @@ function randn() {
 
 const LOG2PI = Math.log(2 * Math.PI);
 
-// --- Actor network: 4 → 64 → 64 → 1 (Gaussian mean μ) ---
+// --- Actor network: 6 → 64 → 64 → 1 (Gaussian mean μ) ---
 class ActorNet {
   constructor() {
-    const I = 4, H1 = 64, H2 = 64;
+    const I = 6, H1 = 64, H2 = 64;
     this.I = I; this.H1 = H1; this.H2 = H2;
 
     // Xavier/Glorot initialization (for tanh)
@@ -151,10 +154,10 @@ class ActorNet {
   }
 }
 
-// --- Critic network: 4 → 64 → 64 → 1 (linear output) ---
+// --- Critic network: 6 → 64 → 64 → 1 (linear output) ---
 class CriticNet {
   constructor() {
-    const I = 4, H1 = 64, H2 = 64;
+    const I = 6, H1 = 64, H2 = 64;
     this.I = I; this.H1 = H1; this.H2 = H2;
 
     this.W1 = new Float64Array(H1 * I);
@@ -290,6 +293,8 @@ const rl = {
     this.rollout = { states: [], actions: [], rewards: [], dones: [], logProbs: [], values: [] };
     this.cachedAction = 0;
     this.cachedForce = 0;
+    this.prevForce = 0;
+    this.perturbStep = -1;  // step when last perturbation occurred (-1 = none)
     this.active = true;
   },
 
@@ -305,7 +310,7 @@ const rl = {
   },
 
   computeAction(s) {
-    const ns = normalizeState(s);
+    const ns = normalizeState(s, this.prevForce);
     this.actor.forward(ns);
     const rawAction = this.actor.sample();
     this.cachedAction = rawAction;  // store unclipped for log prob
@@ -313,6 +318,7 @@ const rl = {
     this.cachedLogProb = this.actor.logProb(rawAction);
     this.cachedValue = this.critic.forward(ns);
     this.cachedState = ns;
+    this.prevForce = this.cachedForce;
     return this.cachedForce;
   },
 
@@ -342,6 +348,8 @@ const rl = {
     }
     this.step = 0;
     this.episodeReward = 0;
+    this.prevForce = 0;
+    this.perturbStep = -1;
     const win = 20;
     const recent = this.rewardHistory.slice(-win);
     this.avgRewards.push(recent.reduce((a, b) => a + b, 0) / recent.length);
@@ -493,8 +501,10 @@ const rl = {
   getAction(s) {
     const net = this.bestActor || this.actor;
     if (!net) return 0;
-    net.forward(normalizeState(s));
-    return Math.max(-maxForce, Math.min(maxForce, net.mu));
+    net.forward(normalizeState(s, this.prevForce));
+    const force = Math.max(-maxForce, Math.min(maxForce, net.mu));
+    this.prevForce = force;
+    return force;
   }
 };
 
